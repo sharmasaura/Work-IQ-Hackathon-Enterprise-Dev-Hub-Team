@@ -96,6 +96,96 @@ contracts.
 
 ---
 
+## Build your agent — Microsoft Agent Framework + a Foundry model
+
+This is the **recommended way to build your hackathon agent**: a reasoning LLM hosted in
+**Azure AI Foundry** drives the conversation, and the **Work IQ simulator is wired in as an
+MCP tool** via the **Microsoft Agent Framework**. The model decides when to call
+`ask_work_iq` (and the Tools actions `fetch` / `create_entity` / `update_entity`), reads the
+cited result, and composes the final answer — exercising all four capability tiers,
+including the Tools-write tier.
+
+> This works identically against the real Work IQ MCP server later — you only swap the
+> `command`/`args` of the MCP tool. Your agent code doesn't change.
+
+### Prerequisites
+
+- Python **3.10+** and the simulator quick start above completed (so `simulator/server.py` runs).
+- An **Azure AI Foundry** project with a **chat model deployed** (e.g. `gpt-4o-mini`).
+- Signed in for Entra auth: `az login`.
+
+### Install
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install agent-framework agent-framework-foundry azure-identity python-dotenv
+```
+
+### Configure (env vars read by `FoundryChatClient`)
+
+```powershell
+$env:FOUNDRY_PROJECT_ENDPOINT = "https://<your-foundry-project>.services.ai.azure.com/api/projects/<project>"
+$env:FOUNDRY_MODEL            = "gpt-4o-mini"   # your deployment name
+```
+
+### Minimal agent (`agent.py`)
+
+```python
+import asyncio, sys
+from agent_framework import Agent, MCPStdioTool
+from agent_framework_foundry import FoundryChatClient
+from azure.identity import AzureCliCredential
+
+SIM_SERVER = r"simulator\server.py"   # the Work IQ simulator MCP server
+
+async def main():
+    workiq = MCPStdioTool(
+        name="workiq",
+        description="Microsoft Work IQ — ask_work_iq + fetch/create_entity/update_entity over your work context.",
+        command=sys.executable,            # the same Python running this agent
+        args=[SIM_SERVER],
+        env={"WORKIQ_SIM_SCENARIO": "scenarios/c2-contoso",
+             "WORKIQ_SIM_PERSONA":  "new_pm"},   # persona drives the RBAC/governance demo
+    )
+
+    async with Agent(
+        client=FoundryChatClient(credential=AzureCliCredential()),  # reads FOUNDRY_* env vars
+        name="WorkIQHackAgent",
+        instructions=(
+            "You are a workplace assistant. Use the Work IQ tools to answer from the user's "
+            "live work context. Always surface the citations the tool returns. When the task "
+            "calls for an action (e.g. logging a milestone or updating a status), call the "
+            "appropriate Tools action and confirm the write."
+        ),
+        tools=workiq,
+    ) as agent:
+        reply = await agent.run("What is blocking qualification, and who owns the test plan?")
+        print(reply.text)
+
+asyncio.run(main())
+```
+
+Run it from the repo root:
+
+```powershell
+.\.venv\Scripts\python.exe agent.py
+```
+
+### Notes
+
+- **Foundry vs Azure OpenAI** — to use a model via Azure OpenAI instead of a Foundry project,
+  swap the client for `from agent_framework.openai import OpenAIChatClient` and set
+  `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_CHAT_MODEL` (keep `MCPStdioTool` unchanged).
+- **Switch to the real Work IQ** — replace the tool's `command`/`args` with the real MCP
+  launch (`npx -y @microsoft/workiq@preview mcp start`); everything else stays the same.
+- **A2A instead of MCP** — if your agent reaches Work IQ as a peer agent, run
+  `simulator/a2a_server.py` and point an A2A client at `http://127.0.0.1:8920/a2a/` (see
+  [`simulator/README.md`](simulator/README.md)).
+- **Persona = identity** — change `WORKIQ_SIM_PERSONA` to demo RBAC: an under-privileged
+  persona gets the restricted source withheld with a governance note while the rest of the
+  synthesis still returns.
+
+---
+
 ## Quick start — Path B (real Work IQ)
 
 Open **`challenge-pack/WorkIQ-Hackathon-Participant-Setup-Guide_14-JUN-2026.pdf`** and
