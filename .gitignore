@@ -26,6 +26,7 @@ Thumbs.db
 # on the maintainer's disk but are not tracked/cloned.
 /agent.py
 /challenge-pack/WorkIQ-Architecture-Guide_14-JUN-2026.pdf
+/challenge-pack/WorkIQ-Hackathon-Participant-Setup-Guide_14-JUN-2026.pdf
 /starter-kit/workiq-agent_14-JUN-2026.mjs
 /starter-kit/workiq-ask-harness_14-JUN-2026.mjs
 
