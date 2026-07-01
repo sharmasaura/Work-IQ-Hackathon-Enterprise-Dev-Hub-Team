@@ -13,12 +13,45 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-color: #efe0c9;
+            background-image: linear-gradient(135deg, #f3e7d3 0%, #efe0c9 45%, #e7d6bc 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: flex-start;
             padding: 20px;
+        }
+
+        .bg-watermark {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+            transform: rotate(-28deg) scale(1.28);
+            transform-origin: center;
+        }
+
+        .bg-watermark::before {
+            content: "";
+            position: absolute;
+            inset: -30%;
+            background: repeating-linear-gradient(-28deg, rgba(141, 116, 80, 0.14) 0 1px, transparent 1px 78px);
+        }
+
+        .bg-watermark-track {
+            position: relative;
+            white-space: nowrap;
+            font-size: 30px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            color: rgba(114, 89, 55, 0.34);
+            text-transform: uppercase;
+            line-height: 1;
+            padding-left: 4vw;
         }
 
         .app-shell {
@@ -27,13 +60,18 @@
             flex-direction: column;
             gap: 14px;
             position: relative;
+            z-index: 1;
         }
 
         .workspace-banner {
+            width: 100vw;
+            margin-left: calc(50% - 50vw);
+            margin-right: calc(50% - 50vw);
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.35);
             color: #fff;
             padding: 14px 16px;
+            text-align: center;
             background:
                 radial-gradient(circle at 12% 20%, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 28%),
                 radial-gradient(circle at 84% 80%, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 24%),
@@ -53,6 +91,7 @@
             font-size: 12px;
             opacity: 0.92;
         }
+
 
         .container {
             width: 100%;
@@ -74,6 +113,7 @@
             padding: 20px;
             text-align: center;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
         }
 
         .header h1 {
@@ -87,13 +127,31 @@
         }
 
         .header-controls {
-            margin-top: 12px;
+            margin-top: 0;
             display: flex;
-            justify-content: flex-start;
-            align-items: center;
+            flex-direction: column;
+            align-items: flex-end;
             gap: 10px;
-            flex-wrap: wrap;
-            width: 100%;
+            width: auto;
+            position: absolute;
+            top: 14px;
+            right: 20px;
+        }
+
+        .header-controls-main {
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-end;
+            align-items: flex-end;
+            gap: 10px;
+            width: auto;
+            max-width: 100%;
+        }
+
+        .header-controls-actions {
+            display: flex;
+            justify-content: flex-end;
+            width: auto;
         }
 
         .header-controls label {
@@ -164,7 +222,6 @@
             border-radius: 8px;
             font-size: 12px;
             font-weight: 700;
-            margin-left: auto;
         }
 
         .side-panel-toggle:hover {
@@ -172,7 +229,8 @@
         }
 
         .side-panel {
-            width: 320px;
+            --side-panel-width: 392px;
+            width: var(--side-panel-width);
             border-left: 1px solid #e3e3e3;
             background: #f7f9fc;
             overflow-y: auto;
@@ -182,7 +240,7 @@
             gap: 10px;
             position: absolute;
             top: 0;
-            right: -336px;
+            right: calc(-1 * var(--side-panel-width));
             height: 100%;
             border: 1px solid #d9dff1;
             border-radius: 10px;
@@ -317,6 +375,22 @@
             flex-wrap: wrap;
         }
 
+        .faq-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 0;
+            padding: 0;
+        }
+
+        .faq-chip {
+            width: 100%;
+            text-align: left;
+            white-space: normal;
+            line-height: 1.35;
+        }
+
         .chip {
             padding: 4px 8px;
             border-radius: 999px;
@@ -326,6 +400,18 @@
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+
+        .chip:hover {
+            background: #e1e9ff;
+            color: #2345ad;
+            border-color: #b8c9ff;
+        }
+
+        .chip:focus-visible {
+            outline: 2px solid #9bb3ff;
+            outline-offset: 2px;
         }
 
         .mini-list {
@@ -407,6 +493,36 @@
             margin-top: 4px;
         }
 
+        .panel-form-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .panel-form-row label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #405078;
+        }
+
+        .panel-select {
+            width: 100%;
+            max-width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #d5dced;
+            border-radius: 8px;
+            background: #fff;
+            color: #2b2b2b;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .panel-persona-status {
+            color: #c94343;
+            font-size: 12px;
+            min-height: 16px;
+        }
+
         .input-area {
             padding: 20px;
             border-top: 1px solid #eee;
@@ -425,6 +541,8 @@
 
         .message {
             display: flex;
+            align-items: flex-end;
+            gap: 8px;
             animation: slideIn 0.3s ease-out;
         }
 
@@ -454,6 +572,28 @@
             line-height: 1.5;
             word-wrap: break-word;
             overflow-wrap: anywhere;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+            background: #ffffff;
+        }
+
+        .message-avatar.assistant {
+            background: linear-gradient(145deg, #e8f7ff, #d8edff);
+        }
+
+        .message-avatar.user {
+            background: linear-gradient(145deg, #ffe7ef, #ffd9e6);
         }
 
         .response-body p {
@@ -552,6 +692,11 @@
             align-items: center;
             color: #999;
             font-size: 14px;
+        }
+
+        .loading.message-content {
+            max-width: 120px;
+            justify-content: center;
         }
 
         .loading span {
@@ -654,6 +799,12 @@
         }
 
         @media (max-width: 768px) {
+            .header-controls {
+                position: static;
+                width: 100%;
+                margin-top: 10px;
+            }
+
             .container {
                 height: calc(100vh - 120px);
                 min-height: 0;
@@ -667,7 +818,7 @@
                 right: 0;
                 top: auto;
                 bottom: 0;
-                height: 55%;
+                height: 62%;
                 border-radius: 0;
             }
 
@@ -699,6 +850,14 @@
     </style>
 </head>
 <body>
+    <div class="bg-watermark" aria-hidden="true">
+        <div class="bg-watermark-track">Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon</div>
+        <div class="bg-watermark-track">Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon</div>
+        <div class="bg-watermark-track">Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon</div>
+        <div class="bg-watermark-track">Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon</div>
+        <div class="bg-watermark-track">Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon</div>
+        <div class="bg-watermark-track">Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon   Work IQ Hackathon</div>
+    </div>
     <div class="app-shell">
         <div class="workspace-banner" aria-label="Team banner">
             <h2>Team 5 - Challenge 6 — Enterprise Developer Knowledge Hub</h2>
@@ -718,24 +877,22 @@
             <h1>🤖 Work IQ AI Agent</h1>
             <p>Ask questions about your work context</p>
             <div class="header-controls">
-                <label for="personaSelect">Persona</label>
-                <select id="personaSelect" title="Active simulator persona">
-                    <option value="">Loading personas...</option>
-                </select>
-
-                <div class="transport-group" role="radiogroup" aria-label="Connectivity mode">
-                    <label class="transport-option" for="transportMcp">
-                        <input type="radio" id="transportMcp" name="transportMode" value="MCP" checked>
-                        MCP
-                    </label>
-                    <label class="transport-option" for="transportA2a">
-                        <input type="radio" id="transportA2a" name="transportMode" value="A2A">
-                        A2A
-                    </label>
+                <div class="header-controls-main">
+                    <div class="transport-group" role="radiogroup" aria-label="Connectivity mode">
+                        <label class="transport-option" for="transportMcp">
+                            <input type="radio" id="transportMcp" name="transportMode" value="MCP" checked>
+                            MCP
+                        </label>
+                        <label class="transport-option" for="transportA2a">
+                            <input type="radio" id="transportA2a" name="transportMode" value="A2A">
+                            A2A
+                        </label>
+                    </div>
                 </div>
 
-                <span class="persona-status" id="personaStatus"></span>
-                <button type="button" id="panelToggleBtn" class="side-panel-toggle">Show details</button>
+                <div class="header-controls-actions">
+                    <button type="button" id="panelToggleBtn" class="side-panel-toggle">More options</button>
+                </div>
             </div>
         </div>
 
@@ -764,7 +921,55 @@
             </div>
 
             <aside class="side-panel hidden" id="sidePanel">
-                <details class="panel-card" open>
+                <details class="panel-card">
+                    <summary>⚙️ SETTINGS</summary>
+                    <div class="panel-content">
+                        <div class="panel-form-row">
+                            <label for="personaSelect">Persona</label>
+                            <select id="personaSelect" class="panel-select" title="Active simulator persona">
+                                <option value="">Loading personas...</option>
+                            </select>
+                            <span class="panel-persona-status" id="personaStatus"></span>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="panel-card">
+                    <summary>❓ FAQS</summary>
+                    <div class="panel-content">
+                        <ul class="faq-list" id="faqList">
+                            <li>
+                                <button class="chip faq-chip" type="button">What did the last incident bridge call decide about the Atlas payments outage, and what actions were assigned?</button>
+                            </li>
+                            <li>
+                                <button class="chip faq-chip" type="button">What has the SRE team emailed the incident distribution about the suspected root cause of the Atlas outage?</button>
+                            </li>
+                            <li>
+                                <button class="chip faq-chip" type="button">Which mitigation was rolled out for Atlas and by whom, across the #atlas-incident channel and the action tracker?</button>
+                            </li>
+                            <li>
+                                <button class="chip faq-chip" type="button">What's the current status of the Atlas restoration across the last bridge call and the shared incident doc?</button>
+                            </li>
+                            <li>
+                                <button class="chip faq-chip" type="button">I'm taking the on-call shift on the Atlas incident. Give me the current picture: last bridge-call decisions, suspected root cause, mitigation rolled out and by whom, open actions and owners, and the customer-communications commitment.</button>
+                            </li>
+                            <li>
+                                <button class="chip faq-chip" type="button">Build the post-incident timeline for the Atlas outage: decisions, mitigations, actions, and status changes in chronological order with who did what.</button>
+                            </li>
+                            <li>
+                                <button class="chip faq-chip" type="button">For each open action from the last bridge call, create or update the action item in the incident tracker with owner, service, and due time.</button>
+                            </li>
+                            <li>
+                                <button class="chip faq-chip" type="button">Draft the shift-handover brief and the post-incident-review starting point for the Atlas outage.</button>
+                            </li>
+                            <li>
+                                <button class="chip faq-chip" type="button">What do the OneNote customer escalation call notes say?</button>
+                            </li>
+                        </ul>
+                    </div>
+                </details>
+
+                <details class="panel-card">
                     <summary>💡 SUGGESTIONS</summary>
                     <div class="panel-content">
                         <div class="chip-list" id="suggestionsList">
@@ -775,7 +980,7 @@
                     </div>
                 </details>
 
-                <details class="panel-card" open>
+                <details class="panel-card">
                     <summary>📌 RECENT</summary>
                     <div class="panel-content">
                         <ul class="mini-list" id="recentQuestionsList">
@@ -784,7 +989,7 @@
                     </div>
                 </details>
 
-                <details class="panel-card" open>
+                <details class="panel-card">
                     <summary>📊 PROGRESS</summary>
                     <div class="panel-content">
                         <div class="progress-wrap">
@@ -794,7 +999,7 @@
                     </div>
                 </details>
 
-                <details class="panel-card" open>
+                <details class="panel-card">
                     <summary>✅ NEXT STEPS</summary>
                     <div class="panel-content">
                         <div class="step-actions">
@@ -805,7 +1010,7 @@
                     </div>
                 </details>
 
-                <details class="panel-card" open>
+                <details class="panel-card">
                     <summary>🕒 TIMELINE</summary>
                     <div class="panel-content">
                         <div class="timeline-bar">
@@ -835,6 +1040,7 @@
         const sidePanel = document.getElementById('sidePanel');
         const recentQuestionsList = document.getElementById('recentQuestionsList');
         const suggestionsList = document.getElementById('suggestionsList');
+        const faqList = document.getElementById('faqList');
         const progressFill = document.getElementById('progressFill');
         const progressText = document.getElementById('progressText');
         const sourceTags = document.getElementById('sourceTags');
@@ -866,14 +1072,20 @@
         }
 
         function setPersonaStatus(text, isError = false) {
-            personaStatus.textContent = text || '';
-            personaStatus.style.color = isError ? '#ffd9d9' : 'rgba(255,255,255,0.95)';
+            const message = isError ? (text || '') : '';
+            personaStatus.textContent = message;
+            personaStatus.style.display = message ? 'inline' : 'none';
         }
 
         function toggleSidePanel(forceOpen = null) {
             const shouldOpen = forceOpen === null ? sidePanel.classList.contains('hidden') : forceOpen;
             sidePanel.classList.toggle('hidden', !shouldOpen);
-            panelToggleBtn.textContent = shouldOpen ? 'Hide details' : 'Show details';
+            if (shouldOpen) {
+                sidePanel.querySelectorAll('details').forEach((details) => {
+                    details.open = false;
+                });
+            }
+            panelToggleBtn.textContent = shouldOpen ? 'Hide options' : 'More options';
         }
 
         function renderRecentQuestions() {
@@ -1026,7 +1238,7 @@
 
                 personaSelect.value = active;
                 personaSelect.disabled = false;
-                setPersonaStatus(`Active: ${active}`);
+                setPersonaStatus('');
             } catch (error) {
                 personaSelect.innerHTML = '<option value="">Default persona</option>';
                 personaSelect.disabled = true;
@@ -1037,7 +1249,7 @@
         async function changePersona(newPersona) {
             try {
                 personaSelect.disabled = true;
-                setPersonaStatus('Switching persona...');
+                setPersonaStatus('');
 
                 const response = await fetch(`${API_BASE}/api/persona`, {
                     method: 'POST',
@@ -1053,7 +1265,7 @@
                     return;
                 }
 
-                setPersonaStatus(`Active: ${data.active_persona}`);
+                setPersonaStatus('');
             } catch (error) {
                 setPersonaStatus(`Switch failed: ${error.message}`, true);
             } finally {
@@ -1124,6 +1336,11 @@
         function addMessage(text, type, citations = [], trace = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
+
+            const avatarDiv = document.createElement('div');
+            const avatarType = type === 'user' ? 'user' : 'assistant';
+            avatarDiv.className = `message-avatar ${avatarType}`;
+            avatarDiv.textContent = type === 'user' ? '👤' : '🤖';
             
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
@@ -1198,7 +1415,13 @@
                 contentDiv.appendChild(sourcesDiv);
             }
             
-            messageDiv.appendChild(contentDiv);
+            if (type === 'user') {
+                messageDiv.appendChild(contentDiv);
+                messageDiv.appendChild(avatarDiv);
+            } else {
+                messageDiv.appendChild(avatarDiv);
+                messageDiv.appendChild(contentDiv);
+            }
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
@@ -1208,11 +1431,16 @@
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'message assistant';
             loadingDiv.id = 'loading-message';
+
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'message-avatar assistant';
+            avatarDiv.textContent = '🤖';
             
             const loadingContent = document.createElement('div');
-            loadingContent.className = 'loading';
+            loadingContent.className = 'loading message-content';
             loadingContent.innerHTML = '<span>.</span><span>.</span><span>.</span>';
             
+            loadingDiv.appendChild(avatarDiv);
             loadingDiv.appendChild(loadingContent);
             messagesDiv.appendChild(loadingDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -1324,6 +1552,17 @@
         traceCloseBtn.addEventListener('click', closeTraceFlyout);
 
         suggestionsList.addEventListener('click', (e) => {
+            if (!(e.target instanceof HTMLElement)) {
+                return;
+            }
+            if (!e.target.classList.contains('chip')) {
+                return;
+            }
+            messageInput.value = e.target.textContent || '';
+            messageInput.focus();
+        });
+
+        faqList.addEventListener('click', (e) => {
             if (!(e.target instanceof HTMLElement)) {
                 return;
             }
