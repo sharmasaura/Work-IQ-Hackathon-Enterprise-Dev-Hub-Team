@@ -14,10 +14,24 @@ from openai.types.evals.create_eval_jsonl_run_data_source_param import (
 
 def local_agent_target(query: str, api_url: str) -> str:
     payload = {"message": query}
-    response = requests.post(api_url, json=payload, timeout=60)
-    response.raise_for_status()
-    body = response.json()
-    return str(body.get("response", "")).strip()
+    max_retries = 3
+    timeout = 180  # 3 minutes — MCP server init + model call can be slow
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(api_url, json=payload, timeout=timeout)
+            response.raise_for_status()
+            body = response.json()
+            return str(body.get("response", "")).strip()
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            if attempt < max_retries:
+                wait = 5 * attempt
+                print(f"  Attempt {attempt} failed: {type(e).__name__}. Retrying in {wait}s...", flush=True)
+                import time
+                time.sleep(wait)
+            else:
+                print(f"  All {max_retries} attempts failed: {e}", flush=True)
+                raise
 
 
 def load_dataset(path: Path) -> list[dict]:
@@ -92,22 +106,49 @@ def main() -> None:
         raise FileNotFoundError(f"Dataset file not found: {dataset_file_path}")
 
     dataset_items = load_dataset(dataset_file_path)
+    if not dataset_items:
+        raise ValueError("Dataset is empty")
+
+    print(f"\n📊 Evaluation Configuration:")
+    print(f"   API Base: {api_base}")
+    print(f"   API Path: {api_path}")
+    print(f"   Full URL: {api_url}")
+    print(f"   Dataset: {dataset_file_path}")
+    print(f"   Queries: {len(dataset_items)}")
+    print(f"\n⏳ Checking Flask app health...", flush=True)
+
+    try:
+        status_url = f"{api_base.rstrip('/')}/api/status"
+        health = requests.get(status_url, timeout=5)
+        print(f"✓ Flask app is reachable and healthy", flush=True)
+    except Exception as e:
+        print(f"⚠ Warning: Flask app health check failed: {e}", flush=True)
+        print(f"   Proceeding anyway, but errors may occur...", flush=True)
+
+    print(f"\n🚀 Starting evaluation loop...\n", flush=True)
     run_content = []
 
-    for item in dataset_items:
+    for i, item in enumerate(dataset_items, 1):
         query = str(item.get("query", "")).strip()
         if not query:
             continue
 
-        agent_response = local_agent_target(query=query, api_url=api_url)
-        run_content.append(
-            {
-                "item": item,
-                "sample": {
-                    "output_text": agent_response,
-                },
-            }
-        )
+        try:
+            print(f"\n[{i}/{len(dataset_items)}] Processing query...", flush=True)
+            agent_response = local_agent_target(query=query, api_url=api_url)
+            run_content.append(
+                {
+                    "item": item,
+                    "sample": {
+                        "output_text": agent_response,
+                    },
+                }
+            )
+            print(f"✓ Response received ({len(agent_response)} chars)", flush=True)
+        except Exception as e:
+            print(f"✗ Query {i} failed: {type(e).__name__}: {e}", flush=True)
+            print(f"  Skipping this query and continuing...", flush=True)
+            continue
 
     if not run_content:
         raise ValueError("No valid dataset rows were found for evaluation")
