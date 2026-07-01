@@ -19,7 +19,7 @@ from agent_framework.openai import OpenAIChatCompletionClient
 from agent_framework import MCPStdioTool
 
 # Load environment variables
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=True)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -45,6 +45,11 @@ You have access to Work IQ tools through the connected MCP server:
 - update_entity: Update existing rows in Work IQ tables
 
 Use these tools to help answer user questions about their work context."""
+
+
+def _env_truthy(name: str) -> bool:
+    """Parse common truthy env values."""
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _extract_citations(response_obj) -> list:
@@ -229,6 +234,24 @@ def _get_required_env(name: str) -> str:
     return value
 
 
+def _resolve_mcp_command(raw_command: str) -> str:
+    """Resolve MCP command path and fail-safe to current interpreter if moved."""
+    cmd = (raw_command or "").strip()
+    if not cmd:
+        raise ValueError("Missing required environment variable: WORKIQ_MCP_COMMAND")
+
+    # Keep non-path commands (e.g., npx) unchanged.
+    if not any(sep in cmd for sep in ("\\", "/", ":")):
+        return cmd
+
+    p = Path(cmd)
+    if p.exists():
+        return str(p)
+
+    # If configured path is stale after folder moves, use current venv interpreter.
+    return sys.executable
+
+
 def _resolve_scenario_path(raw_scenario: str) -> Path:
     """Resolve scenario path as absolute, relative to repo root, or relative to simulator/."""
     p = Path(raw_scenario)
@@ -264,6 +287,11 @@ def init_agent():
     global model_client, mcp_command_cfg, mcp_args_cfg, available_personas
     try:
         endpoint = os.getenv("WORKIQ_AZURE_ENDPOINT", "").strip()
+        # Treat template placeholder as effectively unset.
+        if "YOUR-RESOURCE" in endpoint.upper():
+            endpoint = ""
+        # Local hackathon workflow: keep web app in simulator mode.
+        force_simulator_only = True
         raw_scenario = os.getenv("WORKIQ_SIM_SCENARIO", r"scenarios\c2-contoso")
         scenario_path = _resolve_scenario_path(raw_scenario)
         available_personas = _load_personas_for_scenario(scenario_path)
@@ -271,7 +299,7 @@ def init_agent():
 
         # Simulator-only mode: if no Azure endpoint is configured, answer directly from
         # simulator engine (same behavior family as simulator/demo.py).
-        if not endpoint:
+        if force_simulator_only or not endpoint:
             simulator_dir = Path(__file__).resolve().parent / "simulator"
             if str(simulator_dir) not in sys.path:
                 sys.path.insert(0, str(simulator_dir))
@@ -300,7 +328,7 @@ def init_agent():
         )
 
         # Setup MCP stdio tool for Work IQ
-        mcp_command_cfg = _get_required_env("WORKIQ_MCP_COMMAND")
+        mcp_command_cfg = _resolve_mcp_command(_get_required_env("WORKIQ_MCP_COMMAND"))
         mcp_args_cfg = shlex.split(os.getenv("WORKIQ_MCP_ARGS", ""), posix=False)
         mcp_tool = object()
 
@@ -407,7 +435,22 @@ def chat():
         if not agent:
             return jsonify({"error": "Agent not initialized"}), 500
 
-        if simulator_only:
+        use_simulator_only = simulator_only or _env_truthy("WORKIQ_SIMULATOR_ONLY")
+
+        if use_simulator_only:
+            # If app initialized in non-simulator mode but env now requires simulator-only,
+            # lazily prepare simulator engine for this request.
+            global sim_engine, sim_scenario
+            if sim_engine is None or sim_scenario is None:
+                raw_scenario = os.getenv("WORKIQ_SIM_SCENARIO", r"scenarios\c2-contoso")
+                scenario_path = _resolve_scenario_path(raw_scenario)
+                simulator_dir = Path(__file__).resolve().parent / "simulator"
+                if str(simulator_dir) not in sys.path:
+                    sys.path.insert(0, str(simulator_dir))
+                import engine as sim_engine_module  # type: ignore
+                sim_scenario = sim_engine_module.load_scenario(str(scenario_path))
+                sim_engine = sim_engine_module
+
             active_persona = session.get("persona_id", sim_persona or "all")
             persona_id = None if (active_persona or "").lower() == "all" else active_persona
             result = sim_engine.ask(sim_scenario, user_message, persona_id=persona_id)
@@ -519,7 +562,7 @@ def clear_history():
 @app.route("/api/status", methods=["GET"])
 def status():
     """Get agent status."""
-    if agent and simulator_only:
+    if agent and (simulator_only or _env_truthy("WORKIQ_SIMULATOR_ONLY")):
         configured_persona = os.getenv("WORKIQ_SIM_PERSONA", "quality_engineer")
         configured_scenario = os.getenv("WORKIQ_SIM_SCENARIO", r"scenarios\c2-contoso")
         active_persona = session.get("persona_id", sim_persona or configured_persona)
