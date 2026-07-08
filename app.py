@@ -721,7 +721,11 @@ def chat():
 
             active_persona = session.get("persona_id", sim_persona or "all")
             persona_id = None if (active_persona or "").lower() == "all" else active_persona
-            result = sim_engine.ask(sim_scenario, user_message, persona_id=persona_id, data_filters=data_filters)
+            # Keep compatibility with simulator engines that may not support data_filters.
+            try:
+                result = sim_engine.ask(sim_scenario, user_message, persona_id=persona_id, data_filters=data_filters)
+            except TypeError:
+                result = sim_engine.ask(sim_scenario, user_message, persona_id=persona_id)
             result = _maybe_enforce_source_intent(sim_scenario, sim_engine, user_message, persona_id, result)
             citations = result.get("citations", [])
             trace = _build_demo_trace(
