@@ -9,7 +9,7 @@ import sys
 import shlex
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from flask import Flask, render_template, request, jsonify, session, send_file
 from azure.identity import DefaultAzureCredential
@@ -1152,6 +1152,355 @@ def internal_error(e):
 
 # ===== Panel Orchestrator Endpoints =====
 
+_FEATURE_ACCESS = {
+    "executive_brief": {"all", "oncall_lead", "incident_commander"},
+    "progress_tracking": {"all", "oncall_lead", "sre_engineer", "contractor", "incident_commander"},
+    "next_steps": {"all", "oncall_lead", "sre_engineer", "contractor", "incident_commander"},
+    "timeline": {"all", "oncall_lead", "sre_engineer", "contractor", "incident_commander"},
+    "data_filters": {"all", "oncall_lead", "sre_engineer", "contractor", "incident_commander"},
+    "faqs": {"all", "oncall_lead", "sre_engineer", "contractor", "incident_commander"},
+    "suggestions": {"all", "oncall_lead", "incident_commander"},
+    "advanced_analytics": {"all", "incident_commander"},
+    "risk_assessment": {"all", "oncall_lead", "incident_commander"},
+    "compliance_reporting": {"all", "incident_commander"},
+    "action_recommendations": {"all", "oncall_lead", "sre_engineer", "incident_commander"},
+    "scenario_timeline": {"all", "oncall_lead", "sre_engineer", "contractor", "incident_commander"},
+    "whatif_simulation": {"all", "oncall_lead", "sre_engineer", "incident_commander"},
+    "premortem_generator": {"all", "oncall_lead", "sre_engineer", "contractor", "incident_commander"},
+    "interactive_dashboard": {"all", "oncall_lead", "sre_engineer", "contractor", "incident_commander"},
+}
+
+_PERSONA_MAP = {
+    "all": "all",
+    "admin": "all",
+    "oncall_lead": "oncall_lead",
+    "sre_engineer": "sre_engineer",
+    "contractor": "contractor",
+    "incident_commander": "incident_commander",
+    "Marco Reyes — On-Call Lead / SRE Lead": "oncall_lead",
+    "Aisha Khan — SRE Engineer (on-call)": "sre_engineer",
+    "Evan Cole — Contractor SRE (least privilege)": "contractor",
+    "Helen Cho — Incident Commander / Director (escalation)": "incident_commander",
+}
+
+
+def _normalize_persona_id(persona_id: str | None) -> str:
+    raw = (persona_id or "all").strip()
+    mapped = _PERSONA_MAP.get(raw)
+    if mapped:
+        return mapped
+    return raw.lower().replace(" ", "_").replace("-", "_")
+
+
+def _can_access_feature(feature_name: str, persona_id: str | None) -> bool:
+    key = (feature_name or "").lower().replace(" ", "_").replace("-", "_")
+    allowed = _FEATURE_ACCESS.get(key, set())
+    if not allowed:
+        return False
+    if "all" in allowed:
+        return True
+    return _normalize_persona_id(persona_id) in allowed
+
+
+def _scenario_name(sc) -> str:
+    root = getattr(sc, "root", None)
+    if root is not None:
+        name = getattr(root, "name", "")
+        if name:
+            return str(name)
+    return str(getattr(sc, "name", "unknown") or "unknown")
+
+
+def _generate_suggestions(sc_name: str) -> list[dict]:
+    suggestions = {
+        "c1-northbridge": ["What are the pending CAPA items?", "Show capacity planning status", "List open improvement actions"],
+        "c2-contoso": ["What is blocking qualification?", "Who owns PPAP plan?", "Show OneNote recovery log summary"],
+        "c3-meridian": ["What are active engagements?", "Show project milestone status", "List resource allocation issues"],
+        "c4-arundel": ["What maintenance work is pending?", "Show work order priority list", "List critical CMMS items"],
+        "c5-westbrook": ["What accreditation items remain?", "Show AOL status by department", "List overdue compliance items"],
+        "c6-edkh": ["What are open action items?", "Show on-call escalations", "List pending owner reviews"],
+    }.get(sc_name, ["What is the current status?", "Show key action items", "List recent decisions"])
+    return [{"label": s} for s in suggestions]
+
+
+def _generate_timeline(conversation_history: list | None = None, citations: list | None = None) -> list[dict]:
+    timeline = [
+        {"timestamp": datetime.now().isoformat(), "label": "Session started", "type": "session", "icon": "🚀"},
+    ]
+    for item in (conversation_history or [])[:5]:
+        if isinstance(item, dict):
+            role = item.get("role", "user")
+            content = str(item.get("content", "")).strip()
+            if content:
+                timeline.append({
+                    "timestamp": datetime.now().isoformat(),
+                    "label": f"{role.title()}: {content[:40]}...",
+                    "type": "message",
+                    "icon": "💬",
+                })
+    return timeline[:8]
+
+
+def _generate_nextsteps(sc_name: str, last_response: str | None = None) -> list[dict]:
+    base = [
+        {"label": "Draft response", "icon": "✍️", "priority": "medium"},
+        {"label": "Set reminder", "icon": "⏰", "priority": "low"},
+        {"label": "Review sources", "icon": "📚", "priority": "medium"},
+    ]
+    if (last_response or "").lower().find("owner") >= 0:
+        base.insert(0, {"label": "Verify ownership", "icon": "👤", "priority": "high"})
+    if sc_name == "c2-contoso":
+        base.insert(0, {"label": "Update qualification status", "icon": "✓", "priority": "high"})
+    return base[:5]
+
+
+def _generate_progress(response_count: int = 0, citations: list | None = None, conversation_history: list | None = None) -> dict:
+    kinds = {(c or {}).get("kind") for c in (citations or []) if isinstance(c, dict)}
+    source_map = {
+        "email": "Emails",
+        "meeting": "Meetings",
+        "teams_message": "Teams",
+        "file": "Files",
+        "onenote_page": "OneNote",
+        "milestone": "Tables",
+        "capa": "Tables",
+    }
+    source_categories = sorted({source_map[k] for k in kinds if k in source_map})
+    coverage_percent = min(100, int((len(source_categories) / 6) * 100)) if source_categories else 0
+    depth_score = min(10, (response_count * 2) + len(source_categories))
+    return {
+        "response_count": response_count,
+        "sources_used": source_categories,
+        "coverage_percent": coverage_percent,
+        "depth_score": depth_score,
+        "citations_count": len(citations or []),
+        "warnings": [],
+        "status": "active",
+    }
+
+
+def _generate_exec_brief(sc_name: str) -> dict:
+    summary = {
+        "c2-contoso": "Contoso milestone qualification on track. Key stakeholder alignment achieved.",
+        "c6-edkh": "EDKH platform stabilizing. On-call operations nominal and action tracking improving.",
+    }.get(sc_name, f"Status update for {sc_name}. Monitoring key metrics and progress.")
+    return {
+        "summary": summary,
+        "risks": [{"level": "medium", "description": "General project risks under review"}],
+        "blockers": [{"description": "Stakeholder approvals pending", "owner": "TBD", "due": "2026-07-15"}],
+        "next_actions": [{"action": "Review project status", "owner": "Project Manager", "due": "2026-07-10", "priority": "medium"}],
+        "overall_health": "Healthy",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+def _generate_action_recommendations(sc_name: str) -> dict:
+    today = datetime.now()
+    actions = [
+        {
+            "action": "Review pending items",
+            "description": "Assess all pending work items and prioritize next steps",
+            "owner": "Team Lead",
+            "owner_role": "Manager",
+            "due_date": (today + timedelta(days=7)).isoformat(),
+            "priority": "medium",
+            "category": "General",
+            "status": "pending",
+        },
+        {
+            "action": "Schedule stakeholder sync",
+            "description": "Align on priorities and resource needs with stakeholders",
+            "owner": "Project Manager",
+            "owner_role": "Coordinator",
+            "due_date": (today + timedelta(days=3)).isoformat(),
+            "priority": "high",
+            "category": "Communication",
+            "status": "pending",
+        },
+    ]
+    return {
+        "success": True,
+        "scenario": sc_name,
+        "context": "Scenario-aligned recommended actions",
+        "actions": actions,
+        "total_actions": len(actions),
+        "critical_count": 0,
+        "high_count": 1,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+def _generate_scenario_timeline(sc_name: str) -> dict:
+    events = [
+        {
+            "timestamp": "2026-07-06T14:30:00Z",
+            "category": "Alert",
+            "actor": "Monitoring System",
+            "title": "Issue Detection",
+            "description": "Alert fired for high resource usage",
+            "severity": "high",
+        },
+        {
+            "timestamp": "2026-07-06T14:45:00Z",
+            "category": "Response",
+            "actor": "On-call Engineer",
+            "title": "Investigation Started",
+            "description": "Root cause analysis initiated",
+            "severity": "medium",
+        },
+        {
+            "timestamp": "2026-07-06T15:00:00Z",
+            "category": "Resolution",
+            "actor": "Operations",
+            "title": "Service Stabilized",
+            "description": "Mitigation applied and service health restored",
+            "severity": "low",
+        },
+    ]
+    return {
+        "success": True,
+        "scenario": sc_name,
+        "scenario_display": f"{sc_name} Timeline",
+        "context": "Chronological reconstruction of key events",
+        "events": events,
+        "total_events": len(events),
+        "critical_count": 0,
+        "high_count": 1,
+        "duration": "~30 minutes",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def _generate_whatif_simulation(sc_name: str) -> dict:
+    scenarios = [
+        {
+            "name": "Optimistic Path",
+            "description": "Best case with no new blockers",
+            "probability": 0.4,
+            "impact": "No delay",
+            "adjusted_timeline": "On Schedule",
+            "risk_level": "low",
+            "affected_milestones": 0,
+        },
+        {
+            "name": "Expected Path",
+            "description": "Minor dependency delays",
+            "probability": 0.45,
+            "impact": "1-week delay",
+            "adjusted_timeline": "+7 days",
+            "risk_level": "medium",
+            "affected_milestones": 1,
+        },
+        {
+            "name": "Pessimistic Path",
+            "description": "Major issue in critical path",
+            "probability": 0.15,
+            "impact": "3-week delay",
+            "adjusted_timeline": "+21 days",
+            "risk_level": "high",
+            "affected_milestones": 2,
+        },
+    ]
+    return {
+        "success": True,
+        "scenario": sc_name,
+        "scenario_display": f"{sc_name} What-If",
+        "baseline_timeline": "Current baseline",
+        "baseline_milestones": [{"name": "Milestone 1", "date": "2026-07-15", "status": "Planned"}],
+        "scenarios": scenarios,
+        "total_scenarios": len(scenarios),
+        "weighted_risk_delay_days": 6,
+        "recommendation": "Expected delay: ~6 days. Monitor critical path milestones.",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def _generate_premortem(sc_name: str, persona_id: str) -> dict:
+    return {
+        "scenario_display": f"{sc_name} Reliability Program",
+        "active_milestone": "Upcoming Milestone",
+        "target_date": "2026-07-31",
+        "risk_window_days": 14,
+        "risk_score": 1.4,
+        "highest_risk_mode": "Dependency delay",
+        "failure_modes": [
+            {
+                "name": "Dependency delay",
+                "probability": 0.3,
+                "impact": "medium",
+                "early_signal": "Critical dependencies remain unconfirmed",
+                "blast_radius": "Milestone date likely to slip",
+            }
+        ],
+        "preventive_actions": [
+            {
+                "action": "Set contingency owner and fallback plan",
+                "owner": "Program Manager",
+                "due": "2026-07-10",
+                "priority": "high",
+            }
+        ],
+        "recommendation": "Execute high-priority preventive actions within 48 hours and verify early signals daily.",
+        "generated_for_persona": persona_id or "all",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+def _generate_progress_tracking(sc_name: str) -> dict:
+    points = [
+        {"day": "Day 1", "value": 50, "status": "flat", "incidents": 2},
+        {"day": "Day 2", "value": 55, "status": "improving", "incidents": 1},
+        {"day": "Day 3", "value": 60, "status": "improving", "incidents": 1},
+        {"day": "Day 4", "value": 65, "status": "improving", "incidents": 1},
+        {"day": "Day 5", "value": 70, "status": "improving", "incidents": 0},
+        {"day": "Day 6", "value": 75, "status": "improving", "incidents": 0},
+        {"day": "Day 7", "value": 80, "status": "improving", "incidents": 0},
+    ]
+    return {
+        "success": True,
+        "scenario": sc_name,
+        "scenario_display": f"{sc_name} Progress",
+        "trend_label": "Activity Trend",
+        "data_points": points,
+        "summary": "Activity trending upward with improving engagement metrics.",
+        "activities": ["Initial analysis", "Planning phase", "Execution started", "Progress monitoring"],
+        "trend_direction": "upward",
+        "trend_percentage": 60,
+        "total_incidents": 5,
+        "avg_daily_incidents": 1,
+        "improving_days": 6,
+        "declining_days": 0,
+        "flat_days": 1,
+        "current_value": 80,
+        "legend": {"green": "Improving activity", "red": "Declining activity", "gray": "Stable activity"},
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def _generate_interactive_dashboard(sc_name: str) -> dict:
+    kpis = [
+        {"label": "Overall Progress", "value": "72%", "target": "80%", "status": "warning"},
+        {"label": "Critical Issues", "value": "0", "target": "0", "status": "success"},
+        {"label": "Team Alignment", "value": "85%", "target": ">80%", "status": "success"},
+    ]
+    blockers = [{"title": "Generic blocker", "severity": "medium", "owner": "Team Lead", "age_days": 1}]
+    actions = [{"action": "Review metrics", "owner": "Manager", "due": "2026-07-10", "priority": "medium"}]
+    return {
+        "success": True,
+        "scenario": sc_name,
+        "scenario_display": f"{sc_name} Dashboard",
+        "health_status": "On Track",
+        "health_color": "green",
+        "kpis": kpis,
+        "kpi_summary": {"total": len(kpis), "critical": 0, "warning": 1, "success": 2},
+        "top_blockers": blockers,
+        "blocker_count": len(blockers),
+        "top_actions": actions,
+        "action_count": len(actions),
+        "critical_action_count": 0,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
 @app.route("/api/agent/orchestrate", methods=["POST", "OPTIONS"])
 def orchestrate_agents():
     """Orchestrate all panel agents - called on page load."""
@@ -1162,22 +1511,14 @@ def orchestrate_agents():
         if not sim_engine or not sim_scenario:
             return jsonify({"success": False, "error": "Simulator not initialized"}), 500
 
-        active_persona = session.get("persona_id", sim_persona or "all")
-        persona_id = None if (active_persona or "").lower() == "all" else active_persona
-
-        # Import orchestrator
-        from simulator.agents.orchestrator import PanelOrchestrator
-        
-        # Run orchestrator (sync mode, agents will be called as threads)
-        result = asyncio.run(PanelOrchestrator.orchestrate(
-            scenario=sim_scenario,
-            persona_id=persona_id,
-            response_count=0,
-            citations=[],
-            conversation_history=[],
-            last_response=None,
-            timeout=5.0
-        ))
+        sc_name = _scenario_name(sim_scenario)
+        result = {
+            "success": True,
+            "suggestions": _generate_suggestions(sc_name),
+            "timeline": _generate_timeline([], []),
+            "nextsteps": _generate_nextsteps(sc_name, None),
+            "progress": _generate_progress(0, [], []),
+        }
 
         return jsonify(result)
 
@@ -1206,16 +1547,9 @@ def agent_timeline():
             return jsonify({"success": False, "error": "Simulator not initialized"}), 500
 
         data = request.get_json(silent=True) or {}
-        active_persona = session.get("persona_id", sim_persona or "all")
-        persona_id = None if (active_persona or "").lower() == "all" else active_persona
-
-        from simulator.agents.timeline_agent import TimelineAgent
-
-        timeline = TimelineAgent.generate(
-            scenario=sim_scenario,
-            persona_id=persona_id,
-            conversation_history=data.get("conversation_history", []),
-            citations=data.get("citations", [])
+        timeline = _generate_timeline(
+            data.get("conversation_history", []),
+            data.get("citations", []),
         )
 
         return jsonify({
@@ -1239,16 +1573,9 @@ def agent_nextsteps():
             return jsonify({"success": False, "error": "Simulator not initialized"}), 500
 
         data = request.get_json(silent=True) or {}
-        active_persona = session.get("persona_id", sim_persona or "all")
-        persona_id = None if (active_persona or "").lower() == "all" else active_persona
-
-        from simulator.agents.nextsteps_agent import NextStepsAgent
-
-        nextsteps = NextStepsAgent.generate(
-            scenario=sim_scenario,
-            persona_id=persona_id,
-            last_response=data.get("last_response"),
-            conversation_history=data.get("conversation_history", [])
+        nextsteps = _generate_nextsteps(
+            _scenario_name(sim_scenario),
+            data.get("last_response"),
         )
 
         return jsonify({
@@ -1348,20 +1675,14 @@ def get_feature_acl():
         if request.method == "OPTIONS":
             return ("", 204)
 
-        from simulator.agents.acl_manager import FeatureACL
-
         active_persona = session.get("persona_id", sim_persona or "all")
-        
-        # Get all allowed features for this persona
-        allowed_features = FeatureACL.get_allowed_features(active_persona)
-        
-        # Return as dictionary for easy lookup in frontend
-        acl_dict = {feature: FeatureACL.can_access_feature(feature, active_persona) 
-                    for feature in FeatureACL.FEATURE_ACCESS.keys()}
+        normalized = _normalize_persona_id(active_persona)
+        allowed_features = [feature for feature in _FEATURE_ACCESS if _can_access_feature(feature, active_persona)]
+        acl_dict = {feature: _can_access_feature(feature, active_persona) for feature in _FEATURE_ACCESS}
 
         return jsonify({
             "success": True,
-            "persona_id": active_persona,
+            "persona_id": normalized,
             "allowed_features": allowed_features,
             "acl": acl_dict
         })
@@ -1381,24 +1702,11 @@ def agent_executive_brief():
         if not sim_engine or not sim_scenario:
             return jsonify({"success": False, "error": "Simulator not initialized", "brief": {}}), 500
 
-        # Check if persona has access to this feature
-        from simulator.agents.acl_manager import FeatureACL
-        
         active_persona = session.get("persona_id", sim_persona or "all")
-        if not FeatureACL.can_access_feature("executive_brief", active_persona):
+        if not _can_access_feature("executive_brief", active_persona):
             return jsonify({"success": False, "error": "Access denied - insufficient permissions", "brief": {}}), 403
 
-        data = request.get_json(silent=True) or {}
-        persona_id = None if (active_persona or "").lower() == "all" else active_persona
-
-        from simulator.agents.executive_brief_agent import ExecutiveBriefAgent
-
-        brief = ExecutiveBriefAgent.generate(
-            scenario=sim_scenario,
-            persona_id=persona_id,
-            last_response=data.get("last_response"),
-            conversation_history=data.get("conversation_history", [])
-        )
+        brief = _generate_exec_brief(_scenario_name(sim_scenario))
 
         return jsonify({
             "success": True,
@@ -1422,24 +1730,11 @@ def agent_action_recommendations():
         if not sim_engine or not sim_scenario:
             return jsonify({"success": False, "error": "Simulator not initialized", "recommendations": {}}), 500
 
-        # Check if persona has access to this feature
-        from simulator.agents.acl_manager import FeatureACL
-        
         active_persona = session.get("persona_id", sim_persona or "all")
-        if not FeatureACL.can_access_feature("action_recommendations", active_persona):
+        if not _can_access_feature("action_recommendations", active_persona):
             return jsonify({"success": False, "error": "Access denied - insufficient permissions", "recommendations": {}}), 403
 
-        data = request.get_json(silent=True) or {}
-        persona_id = None if (active_persona or "").lower() == "all" else active_persona
-
-        from simulator.agents.action_recommendation_agent import ActionRecommendationAgent
-
-        recommendations = ActionRecommendationAgent.generate(
-            scenario=sim_scenario,
-            persona_id=persona_id,
-            last_response=data.get("last_response"),
-            conversation_history=data.get("conversation_history", [])
-        )
+        recommendations = _generate_action_recommendations(_scenario_name(sim_scenario))
 
         return jsonify({
             "success": True,
@@ -1460,24 +1755,12 @@ def scenario_timeline():
         return "", 204
     
     try:
-        from simulator.agents.scenario_timeline_agent import ScenarioTimelineAgent
-        from simulator.agents.acl_manager import FeatureACL
-        
-        # Get active persona
         active_persona = session.get("persona_id", "all")
-        
-        # Check ACL
-        if not FeatureACL.can_access_feature("scenario_timeline", active_persona):
+
+        if not _can_access_feature("scenario_timeline", active_persona):
             return jsonify({"success": False, "error": "Access restricted for your role"}), 403
-        
-        data = request.get_json() or {}
-        
-        timeline = ScenarioTimelineAgent.generate(
-            scenario=sim_scenario,
-            persona_id=active_persona,
-            last_response=data.get("last_response"),
-            conversation_history=data.get("conversation_history", [])
-        )
+
+        timeline = _generate_scenario_timeline(_scenario_name(sim_scenario))
 
         return jsonify({
             "success": True,
@@ -1498,24 +1781,12 @@ def whatif_simulation():
         return "", 204
     
     try:
-        from simulator.agents.whatif_simulation_agent import WhatIfSimulationAgent
-        from simulator.agents.acl_manager import FeatureACL
-        
-        # Get active persona
         active_persona = session.get("persona_id", "all")
-        
-        # Check ACL
-        if not FeatureACL.can_access_feature("whatif_simulation", active_persona):
+
+        if not _can_access_feature("whatif_simulation", active_persona):
             return jsonify({"success": False, "error": "Access restricted for your role"}), 403
-        
-        data = request.get_json() or {}
-        
-        simulation = WhatIfSimulationAgent.generate(
-            scenario=sim_scenario,
-            persona_id=active_persona,
-            last_response=data.get("last_response"),
-            conversation_history=data.get("conversation_history", [])
-        )
+
+        simulation = _generate_whatif_simulation(_scenario_name(sim_scenario))
 
         return jsonify({
             "success": True,
@@ -1536,25 +1807,15 @@ def pre_mortem_generator():
         return "", 204
 
     try:
-        from simulator.agents.premortem_generator_agent import PreMortemGeneratorAgent
-        from simulator.agents.acl_manager import FeatureACL
-
         if not sim_scenario:
             return jsonify({"success": False, "error": "Simulator not initialized", "premortem": {}}), 500
 
         active_persona = session.get("persona_id", "all")
 
-        if not FeatureACL.can_access_feature("premortem_generator", active_persona):
+        if not _can_access_feature("premortem_generator", active_persona):
             return jsonify({"success": False, "error": "Access restricted for your role"}), 403
 
-        data = request.get_json(silent=True) or {}
-
-        premortem = PreMortemGeneratorAgent.generate(
-            scenario=sim_scenario,
-            persona_id=active_persona,
-            last_response=data.get("last_response"),
-            conversation_history=data.get("conversation_history", []),
-        )
+        premortem = _generate_premortem(_scenario_name(sim_scenario), active_persona)
 
         return jsonify({
             "success": True,
@@ -1575,24 +1836,12 @@ def progress_tracking():
         return "", 204
     
     try:
-        from simulator.agents.progress_tracking_agent import ProgressTrackingAgent
-        from simulator.agents.acl_manager import FeatureACL
-        
-        # Get active persona
         active_persona = session.get("persona_id", "all")
-        
-        # Check ACL
-        if not FeatureACL.can_access_feature("progress_tracking", active_persona):
+
+        if not _can_access_feature("progress_tracking", active_persona):
             return jsonify({"success": False, "error": "Access restricted for your role"}), 403
-        
-        data = request.get_json() or {}
-        
-        progress = ProgressTrackingAgent.generate(
-            scenario=sim_scenario,
-            persona_id=active_persona,
-            last_response=data.get("last_response"),
-            conversation_history=data.get("conversation_history", [])
-        )
+
+        progress = _generate_progress_tracking(_scenario_name(sim_scenario))
 
         return jsonify({
             "success": True,
@@ -1613,24 +1862,12 @@ def interactive_dashboard():
         return "", 204
     
     try:
-        from simulator.agents.interactive_dashboard_agent import InteractiveDashboardAgent
-        from simulator.agents.acl_manager import FeatureACL
-        
-        # Get active persona
         active_persona = session.get("persona_id", "all")
-        
-        # Check ACL
-        if not FeatureACL.can_access_feature("interactive_dashboard", active_persona):
+
+        if not _can_access_feature("interactive_dashboard", active_persona):
             return jsonify({"success": False, "error": "Access restricted for your role"}), 403
-        
-        data = request.get_json() or {}
-        
-        dashboard = InteractiveDashboardAgent.generate(
-            scenario=sim_scenario,
-            persona_id=active_persona,
-            last_response=data.get("last_response"),
-            conversation_history=data.get("conversation_history", [])
-        )
+
+        dashboard = _generate_interactive_dashboard(_scenario_name(sim_scenario))
 
         return jsonify({
             "success": True,
